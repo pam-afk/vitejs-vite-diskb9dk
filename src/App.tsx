@@ -1,205 +1,320 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-const KONTAKTART = ["Formular", "Telefon", "E-Mail", "Direktcall"];
-const QUELLE = ["Google Ads", "Google Organic", "Empfehlung", "Messe", "Social Media", "Sonstige"];
-const SEGMENT = ["B2C", "B2B"];
+const SHEET_ID  = import.meta.env.VITE_SHEET_ID as string;
+const API_KEY   = import.meta.env.VITE_API_KEY as string;
+const WRITE_URL = import.meta.env.VITE_WRITE_URL as string;
+const BASE_URL  = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values`;
+
+const KONTAKTART    = ["Formular", "Telefon", "E-Mail", "Direktcall"];
+const QUELLEN       = ["Google Ads", "Google Organic", "Empfehlung", "Messe", "Social Media", "Sonstige"];
+const SEGMENTE      = ["B2C", "B2B"];
 const QUALIFIKATION = ["offen", "qualifiziert", "Erweiterung Bestandskunde", "unqualifiziert", "Spam"];
-const STATUS = ["neu", "in Bearbeitung", "Angebot", "Abschluss", "verloren"];
-const ZUSTAENDIG = ["Katrin", "Jutta", "Philipp", "Sonstige"];
+const STATUS        = ["neu", "in Bearbeitung", "Angebot", "Abschluss", "verloren"];
+const ZUSTAENDIG    = ["Katrin", "Jutta", "Philipp", "Sonstige"];
 
-const SPALTEN = [
-  { key: "datum", label: "Datum", w: "110px" },
-  { key: "name", label: "Name / Unternehmen", w: "160px" },
-  { key: "kontaktart", label: "Kontaktart", w: "120px" },
-  { key: "quelle", label: "Quelle", w: "140px" },
-  { key: "segment", label: "B2C / B2B", w: "100px" },
-  { key: "qualifikation", label: "Qualifikation", w: "170px" },
-  { key: "status", label: "Status", w: "130px" },
-  { key: "zustaendig", label: "Zuständig", w: "110px" },
-  { key: "kommentar", label: "Kommentar", w: "180px" },
-];
-
-const emptyRow = () => ({
-  id: crypto.randomUUID(),
-  datum: "",
-  name: "",
-  kontaktart: "",
-  quelle: "",
-  segment: "",
-  qualifikation: "offen",
-  status: "neu",
-  zustaendig: "",
-  kommentar: "",
-});
-
-const BEISPIEL = [
-  { id: "1", datum: "02.01.2023", name: "Mustermann GmbH", kontaktart: "Formular", quelle: "Google Ads", segment: "B2B", qualifikation: "qualifiziert", status: "Abschluss", zustaendig: "Katrin", kommentar: "follow-up erledigt" },
-  { id: "2", datum: "09.01.2023", name: "Meyer GmbH", kontaktart: "Telefon", quelle: "Google Organic", segment: "B2C", qualifikation: "unqualifiziert", status: "verloren", zustaendig: "Jutta", kommentar: "kein konkreter Bedarf" },
-  { id: "3", datum: "15.01.2023", name: "Müller GmbH", kontaktart: "E-Mail", quelle: "Messe", segment: "B2B", qualifikation: "qualifiziert", status: "in Bearbeitung", zustaendig: "Katrin", kommentar: "" },
-  { id: "4", datum: "23.01.2023", name: "Schmidt", kontaktart: "Telefon", quelle: "Empfehlung", segment: "B2C", qualifikation: "qualifiziert", status: "Abschluss", zustaendig: "Philipp", kommentar: "" },
-];
-
-const QUAL_FARBEN = {
-  "qualifiziert": "#d1fae5",
-  "Erweiterung Bestandskunde": "#dbeafe",
-  "unqualifiziert": "#fef3c7",
-  "Spam": "#fee2e2",
-  "offen": "#f3f4f6",
+const QUAL_FARBEN: Record<string, { bg: string; color: string }> = {
+  "qualifiziert":              { bg: "#d1fae5", color: "#065f46" },
+  "Erweiterung Bestandskunde": { bg: "#dbeafe", color: "#1e40af" },
+  "unqualifiziert":            { bg: "#fef3c7", color: "#92400e" },
+  "Spam":                      { bg: "#fee2e2", color: "#991b1b" },
+  "offen":                     { bg: "#f3f4f6", color: "#374151" },
 };
-const STATUS_FARBEN = {
-  "neu": "#f3f4f6",
-  "in Bearbeitung": "#fef3c7",
-  "Angebot": "#dbeafe",
-  "Abschluss": "#d1fae5",
-  "verloren": "#fee2e2",
+const STATUS_FARBEN: Record<string, { bg: string; color: string }> = {
+  "neu":            { bg: "#f3f4f6", color: "#374151" },
+  "in Bearbeitung": { bg: "#fef3c7", color: "#92400e" },
+  "Angebot":        { bg: "#dbeafe", color: "#1e40af" },
+  "Abschluss":      { bg: "#d1fae5", color: "#065f46" },
+  "verloren":       { bg: "#fee2e2", color: "#991b1b" },
 };
 
-function Select({ value, onChange, options, placeholder }) {
+interface Lead {
+  rowIndex: number;
+  datum: string;
+  name: string;
+  kontaktart: string;
+  quelle: string;
+  segment: string;
+  qualifikation: string;
+  status: string;
+  zustaendig: string;
+  kommentar: string;
+}
+
+type LeadForm = Omit<Lead, "rowIndex">;
+
+async function fetchLeads(): Promise<Lead[]> {
+  const url  = `${BASE_URL}/Leads!A2:I1000?key=${API_KEY}`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  if (!data.values) return [];
+  return data.values.map((r: string[], i: number) => ({
+    rowIndex:     i + 2,
+    datum:        r[0] || "",
+    name:         r[1] || "",
+    kontaktart:   r[2] || "",
+    quelle:       r[3] || "",
+    segment:      r[4] || "",
+    qualifikation:r[5] || "offen",
+    status:       r[6] || "neu",
+    zustaendig:   r[7] || "",
+    kommentar:    r[8] || "",
+  }));
+}
+
+async function appendLead(lead: LeadForm) {
+  await fetch(WRITE_URL, {
+    method: "POST",
+    body: JSON.stringify({ action: "append", lead }),
+  });
+}
+
+async function updateLead(rowIndex: number, lead: LeadForm) {
+  await fetch(WRITE_URL, {
+    method: "POST",
+    body: JSON.stringify({ action: "update", rowIndex, lead }),
+  });
+}
+
+async function deleteLead(rowIndex: number) {
+  await fetch(WRITE_URL, {
+    method: "POST",
+    body: JSON.stringify({ action: "delete", rowIndex }),
+  });
+}
+
+function Badge({ value, map }: { value: string; map: Record<string, { bg: string; color: string }> }) {
+  const s = map[value] || { bg: "#f3f4f6", color: "#374151" };
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      style={{ width: "100%", border: "none", background: "transparent", fontSize: "13px", padding: "2px 0", cursor: "pointer" }}
-    >
-      <option value="">{placeholder || "—"}</option>
+    <span style={{ background: s.bg, color: s.color, padding: "2px 8px", borderRadius: "12px",
+                   fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap" }}>{value || "—"}</span>
+  );
+}
+
+function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: "6px",
+               padding: "6px 8px", fontSize: "13px", background: "white" }}>
+      <option value="">—</option>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
   );
 }
 
-function KPIBox({ label, value, sub, color }) {
+function KPI({ label, value, sub, bg }: { label: string; value: string | number; sub?: string; bg?: string }) {
   return (
-    <div style={{ background: color || "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "14px 18px", minWidth: "130px", flex: 1 }}>
-      <div style={{ fontSize: "22px", fontWeight: 700, color: "#1f497d" }}>{value}</div>
+    <div style={{ background: bg || "#f8fafc", border: "1px solid #e2e8f0",
+                  borderRadius: "10px", padding: "14px 18px", flex: 1, minWidth: "120px" }}>
+      <div style={{ fontSize: "26px", fontWeight: 700, color: "#1f497d" }}>{value}</div>
       <div style={{ fontSize: "13px", fontWeight: 600, color: "#374151" }}>{label}</div>
       {sub && <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px" }}>{sub}</div>}
     </div>
   );
 }
 
+const emptyForm: LeadForm = {
+  datum: new Date().toLocaleDateString("de-DE"),
+  name: "", kontaktart: "", quelle: "", segment: "",
+  qualifikation: "offen", status: "neu", zustaendig: "", kommentar: ""
+};
+
 export default function App() {
-  const [rows, setRows] = useState(BEISPIEL);
-  const [filterQuelle, setFilterQuelle] = useState("");
-  const [filterSegment, setFilterSegment] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const [leads, setLeads]       = useState<Lead[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [editId, setEditId]     = useState<number | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [filter, setFilter]     = useState({ quelle: "", segment: "", status: "" });
+  const [form, setForm]         = useState<LeadForm>(emptyForm);
 
-  const addRow = () => setRows(r => [...r, emptyRow()]);
-  const delRow = (id) => setRows(r => r.filter(x => x.id !== id));
-  const updateRow = (id, field, val) => setRows(r => r.map(x => x.id === id ? { ...x, [field]: val } : x));
+  useEffect(() => { load(); }, []);
 
-  const filtered = rows.filter(r =>
-    (!filterQuelle || r.quelle === filterQuelle) &&
-    (!filterSegment || r.segment === filterSegment) &&
-    (!filterStatus || r.status === filterStatus)
+  async function load() {
+    setLoading(true);
+    setLeads(await fetchLeads());
+    setLoading(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    if (editId !== null) await updateLead(editId, form);
+    else await appendLead(form);
+    await load();
+    setForm(emptyForm);
+    setEditId(null);
+    setShowForm(false);
+    setSaving(false);
+  }
+
+  async function handleDelete(rowIndex: number) {
+    if (!confirm("Lead wirklich löschen?")) return;
+    setSaving(true);
+    await deleteLead(rowIndex);
+    await load();
+    setSaving(false);
+  }
+
+  function handleEdit(lead: Lead) {
+    const { rowIndex, ...rest } = lead;
+    setForm(rest);
+    setEditId(rowIndex);
+    setShowForm(true);
+  }
+
+  const filtered = leads.filter(l =>
+    (!filter.quelle  || l.quelle  === filter.quelle) &&
+    (!filter.segment || l.segment === filter.segment) &&
+    (!filter.status  || l.status  === filter.status)
   );
 
-  const gesamt = rows.length;
-  const qualifiziert = rows.filter(r => r.qualifikation === "qualifiziert" || r.qualifikation === "Erweiterung Bestandskunde").length;
-  const abschluesse = rows.filter(r => r.status === "Abschluss").length;
-  const quote = qualifiziert > 0 ? Math.round((abschluesse / qualifiziert) * 100) : 0;
-  const spam = rows.filter(r => r.qualifikation === "Spam").length;
+  const gesamt       = leads.length;
+  const qualifiziert = leads.filter(l => l.qualifikation === "qualifiziert" || l.qualifikation === "Erweiterung Bestandskunde").length;
+  const abschluesse  = leads.filter(l => l.status === "Abschluss").length;
+  const quote        = qualifiziert > 0 ? Math.round(abschluesse / qualifiziert * 100) : 0;
+  const spam         = leads.filter(l => l.qualifikation === "Spam").length;
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", padding: "24px", background: "#f8fafc", minHeight: "100vh" }}>
-      <div style={{ marginBottom: "20px" }}>
-        <div style={{ fontSize: "20px", fontWeight: 700, color: "#1f497d" }}>CS Energiesysteme — Lead-Erfassung</div>
-        <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "2px" }}>Eine Zeile pro Lead. Vollständig und konsequent gepflegt.</div>
+    <div style={{ fontFamily: "system-ui, sans-serif", padding: "28px", background: "#f8fafc", minHeight: "100vh" }}>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+        <div>
+          <div style={{ fontSize: "22px", fontWeight: 700, color: "#1f497d" }}>CS Energiesysteme — Leads</div>
+          <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "2px" }}>Eine Zeile pro Lead. Vollständig und konsequent gepflegt.</div>
+        </div>
+        <button onClick={() => { setForm(emptyForm); setEditId(null); setShowForm(true); }}
+          style={{ padding: "9px 18px", background: "#1f497d", color: "white", border: "none",
+                   borderRadius: "8px", cursor: "pointer", fontWeight: 600, fontSize: "14px" }}>
+          + Lead hinzufügen
+        </button>
       </div>
 
-      {/* KPIs */}
-      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
-        <KPIBox label="Leads gesamt" value={gesamt} />
-        <KPIBox label="Qualifizierte Leads" value={qualifiziert} sub={`${gesamt > 0 ? Math.round(qualifiziert/gesamt*100) : 0}% aller Eingänge`} color="#eff6ff" />
-        <KPIBox label="Abschlüsse" value={abschluesse} color="#f0fdf4" />
-        <KPIBox label="Abschlussquote" value={`${quote}%`} sub="von qualifizierten Leads" color="#f0fdf4" />
-        <KPIBox label="Spam / wertlos" value={spam} color="#fff7ed" />
+      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "24px" }}>
+        <KPI label="Leads gesamt"   value={gesamt} />
+        <KPI label="Qualifiziert"   value={qualifiziert} sub={`${gesamt > 0 ? Math.round(qualifiziert/gesamt*100) : 0}% aller Eingänge`} bg="#eff6ff" />
+        <KPI label="Abschlüsse"     value={abschluesse} bg="#f0fdf4" />
+        <KPI label="Abschlussquote" value={`${quote}%`} sub="von qualifizierten Leads" bg="#f0fdf4" />
+        <KPI label="Spam / wertlos" value={spam} bg="#fff7ed" />
       </div>
 
-      {/* Filter */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "14px", flexWrap: "wrap" }}>
-        {[
-          { label: "Quelle", val: filterQuelle, set: setFilterQuelle, opts: QUELLE },
-          { label: "Segment", val: filterSegment, set: setFilterSegment, opts: SEGMENT },
-          { label: "Status", val: filterStatus, set: setFilterStatus, opts: STATUS },
-        ].map(f => (
-          <select key={f.label} value={f.val} onChange={e => f.set(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "13px", background: "white" }}>
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "16px" }}>
+        {([
+          { key: "quelle",  opts: QUELLEN,  label: "Quelle" },
+          { key: "segment", opts: SEGMENTE, label: "Segment" },
+          { key: "status",  opts: STATUS,   label: "Status" },
+        ] as { key: keyof typeof filter; opts: string[]; label: string }[]).map(f => (
+          <select key={f.key} value={filter[f.key]}
+            onChange={e => setFilter(x => ({ ...x, [f.key]: e.target.value }))}
+            style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #d1d5db",
+                     fontSize: "13px", background: "white" }}>
             <option value="">Alle {f.label}n</option>
             {f.opts.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         ))}
-        {(filterQuelle || filterSegment || filterStatus) &&
-          <button onClick={() => { setFilterQuelle(""); setFilterSegment(""); setFilterStatus(""); }}
-            style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #d1d5db", background: "white", cursor: "pointer", fontSize: "13px", color: "#6b7280" }}>
+        {(filter.quelle || filter.segment || filter.status) &&
+          <button onClick={() => setFilter({ quelle: "", segment: "", status: "" })}
+            style={{ padding: "7px 12px", borderRadius: "6px", border: "1px solid #d1d5db",
+                     background: "white", cursor: "pointer", fontSize: "13px", color: "#6b7280" }}>
             Filter zurücksetzen
           </button>}
       </div>
 
-      {/* Tabelle */}
-      <div style={{ overflowX: "auto", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", background: "white", fontSize: "13px" }}>
-          <thead>
-            <tr style={{ background: "#1f497d", color: "white" }}>
-              {SPALTEN.map(s => (
-                <th key={s.key} style={{ padding: "10px 12px", textAlign: "left", whiteSpace: "nowrap", width: s.w, fontWeight: 600 }}>{s.label}</th>
-              ))}
-              <th style={{ padding: "10px 8px", width: "36px" }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((row, i) => (
-              <tr key={row.id} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "white" : "#fafafa" }}>
-                <td style={{ padding: "7px 12px" }}>
-                  <input type="text" value={row.datum} onChange={e => updateRow(row.id, "datum", e.target.value)}
-                    placeholder="TT.MM.JJJJ"
-                    style={{ border: "none", background: "transparent", width: "100%", fontSize: "13px" }} />
-                </td>
-                <td style={{ padding: "7px 12px" }}>
-                  <input type="text" value={row.name} onChange={e => updateRow(row.id, "name", e.target.value)}
-                    placeholder="Name / Firma"
-                    style={{ border: "none", background: "transparent", width: "100%", fontSize: "13px" }} />
-                </td>
-                <td style={{ padding: "7px 12px" }}>
-                  <Select value={row.kontaktart} onChange={v => updateRow(row.id, "kontaktart", v)} options={KONTAKTART} />
-                </td>
-                <td style={{ padding: "7px 12px" }}>
-                  <Select value={row.quelle} onChange={v => updateRow(row.id, "quelle", v)} options={QUELLE} />
-                </td>
-                <td style={{ padding: "7px 12px" }}>
-                  <Select value={row.segment} onChange={v => updateRow(row.id, "segment", v)} options={SEGMENT} />
-                </td>
-                <td style={{ padding: "7px 12px", background: QUAL_FARBEN[row.qualifikation] || "transparent" }}>
-                  <Select value={row.qualifikation} onChange={v => updateRow(row.id, "qualifikation", v)} options={QUALIFIKATION} />
-                </td>
-                <td style={{ padding: "7px 12px", background: STATUS_FARBEN[row.status] || "transparent" }}>
-                  <Select value={row.status} onChange={v => updateRow(row.id, "status", v)} options={STATUS} />
-                </td>
-                <td style={{ padding: "7px 12px" }}>
-                  <Select value={row.zustaendig} onChange={v => updateRow(row.id, "zustaendig", v)} options={ZUSTAENDIG} />
-                </td>
-                <td style={{ padding: "7px 12px" }}>
-                  <input type="text" value={row.kommentar} onChange={e => updateRow(row.id, "kommentar", e.target.value)}
-                    placeholder="Notiz..."
-                    style={{ border: "none", background: "transparent", width: "100%", fontSize: "13px" }} />
-                </td>
-                <td style={{ padding: "7px 8px", textAlign: "center" }}>
-                  <button onClick={() => delRow(row.id)}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: "16px", lineHeight: 1 }}>×</button>
-                </td>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Daten werden geladen…</div>
+      ) : (
+        <div style={{ overflowX: "auto", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", background: "white", fontSize: "13px" }}>
+            <thead>
+              <tr style={{ background: "#1f497d", color: "white" }}>
+                {["Datum","Name / Unternehmen","Kontaktart","Quelle","Segment","Qualifikation","Status","Zuständig","Kommentar",""].map(h => (
+                  <th key={h} style={{ padding: "10px 12px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 600 }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={10} style={{ padding: "24px", textAlign: "center", color: "#9ca3af" }}>Keine Leads gefunden.</td></tr>
+              )}
+              {filtered.map((l, i) => (
+                <tr key={l.rowIndex} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "white" : "#fafafa" }}>
+                  <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{l.datum}</td>
+                  <td style={{ padding: "8px 12px", fontWeight: 500 }}>{l.name}</td>
+                  <td style={{ padding: "8px 12px" }}>{l.kontaktart}</td>
+                  <td style={{ padding: "8px 12px" }}>{l.quelle}</td>
+                  <td style={{ padding: "8px 12px" }}>{l.segment}</td>
+                  <td style={{ padding: "8px 12px" }}><Badge value={l.qualifikation} map={QUAL_FARBEN} /></td>
+                  <td style={{ padding: "8px 12px" }}><Badge value={l.status} map={STATUS_FARBEN} /></td>
+                  <td style={{ padding: "8px 12px" }}>{l.zustaendig}</td>
+                  <td style={{ padding: "8px 12px", color: "#6b7280", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.kommentar}</td>
+                  <td style={{ padding: "8px 8px", whiteSpace: "nowrap" }}>
+                    <button onClick={() => handleEdit(l)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#1f497d", fontSize: "13px", marginRight: "8px" }}>✏️</button>
+                    <button onClick={() => handleDelete(l.rowIndex)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: "13px" }}>×</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      <button onClick={addRow}
-        style={{ marginTop: "12px", padding: "8px 16px", background: "#1f497d", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
-        + Lead hinzufügen
-      </button>
-
-      <div style={{ marginTop: "24px", padding: "14px 18px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px", fontSize: "12px", color: "#92400e", lineHeight: 1.6 }}>
-        <strong>Hinweis zur Nutzung:</strong> Diese Vorlage ist als Google-Sheets- oder Excel-Datei am sinnvollsten – dann kann Jutta sie direkt befüllen und ihr habt wöchentlich Zugriff. Die Farblogik (Qualifikation, Status) lässt sich dort 1:1 übernehmen. Dieses Artifact zeigt die Struktur und Logik; die Daten werden hier nicht gespeichert.
-      </div>
+      {showForm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex",
+                      alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div style={{ background: "white", borderRadius: "12px", padding: "28px", width: "480px",
+                        maxHeight: "90vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize: "17px", fontWeight: 700, color: "#1f497d", marginBottom: "20px" }}>
+              {editId ? "Lead bearbeiten" : "Neuer Lead"}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "4px" }}>Datum</label>
+                <input type="text" value={form.datum} onChange={e => setForm(x => ({ ...x, datum: e.target.value }))}
+                  style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: "6px",
+                           padding: "7px 10px", fontSize: "13px", boxSizing: "border-box" }} />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "4px" }}>Name / Unternehmen</label>
+                <input type="text" value={form.name} onChange={e => setForm(x => ({ ...x, name: e.target.value }))}
+                  style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: "6px",
+                           padding: "7px 10px", fontSize: "13px", boxSizing: "border-box" }} />
+              </div>
+              {([
+                { label: "Kontaktart",    key: "kontaktart",    opts: KONTAKTART },
+                { label: "Quelle",        key: "quelle",        opts: QUELLEN },
+                { label: "Segment",       key: "segment",       opts: SEGMENTE },
+                { label: "Qualifikation", key: "qualifikation", opts: QUALIFIKATION },
+                { label: "Status",        key: "status",        opts: STATUS },
+                { label: "Zuständig",     key: "zustaendig",    opts: ZUSTAENDIG },
+              ] as { label: string; key: keyof LeadForm; opts: string[] }[]).map(f => (
+                <div key={f.key}>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "4px" }}>{f.label}</label>
+                  <Select value={form[f.key] as string} onChange={v => setForm(x => ({ ...x, [f.key]: v }))} options={f.opts} />
+                </div>
+              ))}
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", display: "block", marginBottom: "4px" }}>Kommentar</label>
+                <textarea value={form.kommentar} onChange={e => setForm(x => ({ ...x, kommentar: e.target.value }))}
+                  rows={3} style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: "6px",
+                                    padding: "7px 10px", fontSize: "13px", resize: "vertical", boxSizing: "border-box" }} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "20px", justifyContent: "flex-end" }}>
+              <button onClick={() => { setShowForm(false); setEditId(null); }}
+                style={{ padding: "8px 16px", border: "1px solid #d1d5db", borderRadius: "6px",
+                         background: "white", cursor: "pointer", fontSize: "13px" }}>
+                Abbrechen
+              </button>
+              <button onClick={handleSave} disabled={saving}
+                style={{ padding: "8px 20px", background: "#1f497d", color: "white", border: "none",
+                         borderRadius: "6px", cursor: "pointer", fontWeight: 600, fontSize: "13px",
+                         opacity: saving ? 0.6 : 1 }}>
+                {saving ? "Speichert…" : "Speichern"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
