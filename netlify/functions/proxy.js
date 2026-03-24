@@ -1,4 +1,4 @@
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbww2quMDBJk10y3CLCZVqYviMlUhnm9CY8A_GkFFZK5pZprhVuUsGQmj9FAU7Ry1duv/exec";
+const SCRIPT_URL = "https://script.google.com/macros/library/d/1AbdvteLRYn_RIMmcUBear1eREIyZhGgVs6SZUvvhGizOgeLeSIjSHC5r/6";
 
 exports.handler = async function (event) {
 
