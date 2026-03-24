@@ -1,12 +1,13 @@
+const SCRIPT_URL = "DEINE_APPS_SCRIPT_URL_HIER";
+
 exports.handler = async function (event) {
-  const WRITE_URL = process.env.VITE_WRITE_URL;
 
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
       },
       body: "",
@@ -14,23 +15,37 @@ exports.handler = async function (event) {
   }
 
   try {
-    const response = await fetch(WRITE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: event.body,
-      redirect: "follow",
-    });
+    if (event.httpMethod === "GET") {
+      const response = await fetch(SCRIPT_URL, { redirect: "follow" });
+      const text = await response.text();
+      return {
+        statusCode: 200,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Content-Type": "application/json",
+        },
+        body: text,
+      };
+    }
 
-    const text = await response.text();
+    if (event.httpMethod === "POST") {
+      const response = await fetch(SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: event.body,
+        redirect: "follow",
+      });
+      const text = await response.text();
+      return {
+        statusCode: 200,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Content-Type": "application/json",
+        },
+        body: text,
+      };
+    }
 
-    return {
-      statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Content-Type": "application/json",
-      },
-      body: text,
-    };
   } catch (err) {
     return {
       statusCode: 500,
