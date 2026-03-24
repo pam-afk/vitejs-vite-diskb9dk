@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 
 const SHEET_ID  = import.meta.env.VITE_SHEET_ID as string;
 const API_KEY   = import.meta.env.VITE_API_KEY as string;
-const WRITE_URL = process.env.WRITE_URL;
+const WRITE_URL = "/.netlify/functions/proxy";
 const BASE_URL  = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values`;
 
 const KONTAKTART    = ["Formular", "Telefon", "E-Mail", "Direktcall"];
