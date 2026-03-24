@@ -1,4 +1,4 @@
-const SCRIPT_URL = "DEINE_APPS_SCRIPT_URL_HIER";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbww2quMDBJk10y3CLCZVqYviMlUhnm9CY8A_GkFFZK5pZprhVuUsGQmj9FAU7Ry1duv/exec";
 
 exports.handler = async function (event) {
 
