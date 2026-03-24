@@ -43,22 +43,10 @@ interface Lead {
 type LeadForm = Omit<Lead, "rowIndex">;
 
 async function fetchLeads(): Promise<Lead[]> {
-  const url  = `${BASE_URL}/Leads!A2:I1000?key=${API_KEY}`;
-  const res  = await fetch(url);
+  const res  = await fetch("/.netlify/functions/proxy");
   const data = await res.json();
-  if (!data.values) return [];
-  return data.values.map((r: string[], i: number) => ({
-    rowIndex:     i + 2,
-    datum:        r[0] || "",
-    name:         r[1] || "",
-    kontaktart:   r[2] || "",
-    quelle:       r[3] || "",
-    segment:      r[4] || "",
-    qualifikation:r[5] || "offen",
-    status:       r[6] || "neu",
-    zustaendig:   r[7] || "",
-    kommentar:    r[8] || "",
-  }));
+  if (!data.success || !data.leads) return [];
+  return data.leads;
 }
 
 async function appendLead(lead: LeadForm) {
